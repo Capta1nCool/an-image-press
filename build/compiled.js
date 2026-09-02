@@ -2,10 +2,10 @@
   // lib/helpers.js
   async function fetchAndCompress(url, targetKB, minQuality = 0.1, minDimension = 100) {
     const targetBytes = targetKB * 1024;
-    const res = fetch(url);
+    const res = await fetch(url);
     if (!res.ok)
       throw new Error(`Failed to fetch image: ${res.status}`);
-    const blob = res.blob();
+    const blob = await res.blob();
     const img = await createImageBitmap(blob);
     let width = img.width;
     let height = img.height;
@@ -24,26 +24,25 @@
     let outputBlob;
     while (quality >= minQuality) {
       outputBlob = await drawAndExport(width, height, quality);
-      if (outputBlob.size <= targetBytes) {
-        return outputBlob;
-      }
+      if (outputBlob.size <= targetBytes)
+        break;
       quality -= 0.05;
     }
-    while (Math.max(width, height) > minDimension) {
-      width = Math.round(width * 0.9);
-      height = Math.round(height * 0.9);
-      outputBlob = await drawAndExport(width, height, minQuality);
-      if (outputBlob.size <= targetBytes) {
-        return outputBlob;
+    if (outputBlob.size > targetBytes) {
+      while (Math.max(width, height) > minDimension) {
+        width = Math.round(width * 0.9);
+        height = Math.round(height * 0.9);
+        outputBlob = await drawAndExport(width, height, minQuality);
+        if (outputBlob.size <= targetBytes)
+          break;
       }
     }
-    const dataUrl = await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
       reader.readAsDataURL(outputBlob);
     });
-    return dataUrl;
   }
 
   // lib/plugin.js
@@ -63,7 +62,7 @@
           const images = await app.getNoteImages(noteHandle);
           for (const image of images) {
             const corsURL = `https://amplenote-plugins-cors-anywhere.onrender.com/${image.src}`;
-            const compressedURL = fetchAndCompress(corsURL, maxSizeKB);
+            const compressedURL = await fetchAndCompress(corsURL, maxSizeKB);
             const fileURL = await app.attachNoteMedia(noteHandle, compressedURL);
             await app.updateNoteImage(noteHandle, image, { src: fileURL });
           }
